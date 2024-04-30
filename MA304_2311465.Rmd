@@ -1,0 +1,458 @@
+# MA304 FINAL ASSIGNMENT
+
+### Submitted By: Reg No 2311465
+
+---
+---
+
+## Introduction
+
+Criminal activities are a non-ideal part of any community. The problem given in the assignment is related to crime events in the town of Colchester, Essex, United Kingdom in the year 2023. The dataset given to us can be found at (https://ukpolice.njtierney.com/reference/ukp_crime.html) and contains comprehensive records spanning multiple categories and parameters such as crime type, location, and date. The dataset offers significant insights into the workings of law enforcement and public safety within the area.Stakeholders may create strategies to address security concerns, allocate resources efficiently, and promote a safer community environment by analyzing the trends, patterns, and distribution of criminal activities by studying this dataset.
+
+Moreover, another dataset provided for this assignment is related to the temperature readings in the same town over the year 2023. The dataset provides insights to temperature readings, wind trends, visibility and precipitation values (among others) and is a vital tool to get an average temperature of the town during different months of the year. The dataset can be found here (https://bczernecki.github.io/climate/reference/meteo_ogimet.html). Furthermore, both the datasets can be merged together to find some interesting underlying trends between temperature fluctuations and criminal activities. All of these will be discussed in this project. We will follow the following sequence:
+
+* Data Pre-processing
+* Data Visualization
+* Conclusion
+* Reference List
+
+---
+
+## Data Pre-processing
+
+The first step of any data visualizaion project (including this one) would be to install and import all the necessary libraries that we would be using throughout the assignment. All these libraries were installed in the environment using the RStudio GUI and they have been loaded below. The breakdown of the usage of these libraries is as follows:
+
+* data processing - dplyr, tidyverse, summarytools
+* visualization - ggplot2, leaflet, plotly, ggcorplot, reshape2, scales, corrplot,gridExtra
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(tidyverse)
+library(leaflet)
+library(plotly)
+library(ggcorrplot)
+library(summarytools)
+library(reshape2)
+library(scales)
+library(corrplot)
+library(gridExtra)
+```
+
+Once all the libraries are successfully loaded, it is time to start with the actual data itself. The datasets were downloaded from the MA304 Assignment Moodle page and were saved onto my personal computer. The first thing to do was to access these datasets, for that we used the 'setwd' command to set the working directory to where the files were located and then the 'read.csv' command was used to read both the csv files containing crime and temperature data respectively. Both these files were saved into R dataframe objects under the names 'crime' and 'temperature' respectively.
+
+```{r}
+setwd('D:\\MSc Work\\Spring\\Data Viz\\Final Project') 
+crime <- read.csv('crime23.csv')
+temperature <- read.csv('temp2023.csv')
+```
+
+One of the most important things for any data visualization project is to select a suitable color palette which is aesthetically correct and pleasing to the eye. Since our project dealt mostly with plots and charts, this was a vital step to the success of the project. Therefore, we looked up the official University of Essex Color Palette that could be found here (https://www.essex.ac.uk/staff/brand/colour-palette). The palette contained 15 colors that were imported to this project to create our own color palette and then some were dropped and a few others were imported from the internet using their hex codes as per the requirement of the plots. Our final color palette was named 'essex_color' and contained a total of 14 colors.
+
+```{r}
+essex_color <- c('#622567','#CD202C', '#D55C19', '#E98300', '#F3D311', '#58A618', '#BED600', '#35C4B5', '#007A87', '#00AFD8', '#0065BD', '#AC946B', '#657786', '#132749' ) 
+```
+
+Once all of the pre requisites were done, it was time to look at the datasets themselves and for that we would first use the 'str' command to check the structure of the crime dataset. We see that the dataset has a total of 6878 rows and 12 columns and the datatypes of all the columns is also given to use using this command.
+
+```{r}
+str(crime)
+```
+The same technique is applied on the temperature dataset and we see that it contains a total of 365 rows (implicating the 365 days of the year) and 18 columns containing different perimeter readings related to temperature counts. Once again, the datatype of all the columns along with the initial few values are displayed to be checked.  
+
+```{r}
+str(temperature)
+```
+After viewing the crime dataset initially using the 'str' command, we noticed that a few columns had NA written in their initial few values. This is not good for our dataset as they indicate Null Values which can mess with the dataset at the time of visualizions. So it would be better at this stage to check which columns have Null values in them so they can be catered for at this stage. the 'is.na' command is used to check the number of Null values in each column of the crime dataset.
+
+```{r}
+na_crime <- colSums(is.na(crime))
+print(na_crime)
+```
+We found that the 'context' variable had all 6878 values as NA so essentially it is an empty column that is not contributing to our analysis. We decide that it is best to drop the column entirely at this stage and that was done in the subsequent line. the outcome status also has about 10% Null values but that needn't be dropped at this stage as it will be used in our analysis later.
+
+```{r}
+crime <- crime[, -which(names(crime) == 'context')] # dropping the NA column
+```
+
+The same technique was applied to the temperature dataset to find the Null values in the individual columns and then the columns 'PreselevHp' and 'SnowDepcm' were dropped due to having almost all columns equal to NA values.
+
+```{r}
+na_temperature <- colSums(is.na(temperature))
+print(na_temperature)
+```
+```{r}
+temperature <- temperature[, -which(names(temperature) == 'PreselevHp' | names(temperature) == 'SnowDepcm')] # dropping the NA columns
+```
+
+After dropping the desired columns from our datasets it is useful to have a look at the updated dimensions of our data frames. We do that using the 'dim' command to find the number of rows and columns in the crime and temperature data frames and find that they have the shape (6878,11) and (365,16) respectively.
+
+```{r}
+shape_crime <- dim(crime) # getting the shape of the crime dataset 
+print(paste('The shape of Crime Dataset is:', shape_crime[1], 'rows and', shape_crime[2], 'columns'))
+```
+```{r}
+shape_temperature <- dim(temperature) # getting the shape of the temperature dataset 
+print(paste('The shape of Temperature Dataset is:', shape_temperature[1], 'rows and', shape_temperature[2], 'columns'))
+```
+Now that we are satisfied with the dimensions of the data frames, it is time for adding some variables to the crime dataset as we feel they would be helpful in our analysis. The first column we would add would be to assign the quarter of the year the rows belong to. We would use the 'date' column for this and do the following assignments:
+
+* 1st Quarter - January, February, March
+* 2nd Quarter - April, May, June
+* 3rd Quarter - July, August, September
+* 4th Quarter - October, November, December
+
+```{r}
+crime$quarter <- ifelse(crime$date %in% c('2023-01','2023-02','2023-03'), '1st Quarter',
+                 ifelse(crime$date %in% c('2023-04','2023-05','2023-06'), '2nd Quarter',
+                 ifelse(crime$date %in% c('2023-07','2023-08','2023-09'), '3rd Quarter',
+                 ifelse(crime$date %in% c('2023-10','2023-11','2023-12'), '4th Quarter', NA)))) # using ifelse to assign quarters to rows
+```
+
+Another column we can create would be the 'season' column, this column would assign the months of the year to the season they correspond to. This distinction is based on the analyst's own opinion based on the normal temperature around those times of the years. Such that, they can be changed if the dataset was from some other place of the world where, for example, summers last longer than winters. The distribution is as follows:
+
+* Spring - March, April, May
+* Summer - June, July
+* Fall - August, September
+* Winter - October, November, December, January, February
+
+```{r}
+crime$season <- ifelse(crime$date %in% c('2023-03','2023-04','2023-05'), 'Spring',
+                ifelse(crime$date %in% c('2023-06','2023-07'), 'Summer',
+                ifelse(crime$date %in% c('2023-08','2023-09'), 'Fall',
+                ifelse(crime$date %in% c('2023-10','2023-11','2023-12','2023-01','2023-02'), 'Winter', NA)))) # using ifeise to assign the seasons to rows
+```
+
+We notice that there is one column in common between the two datasets which is the 'date' variable. We can use that to merge both the columns. The issue is that the crime dataframe has the format 'yyyy-mm' in the date column while the temperature dataframe has the format 'mm-dd-yyyy' so to do the merge we need to perform mutation. We mutate the tamperature df and introduce the column 'date' which has the same format as that of the crime dataframe so the merge is possible. The last thing to do is to take the mean of all the values grouped by date. This essentially would create mean temperature values per month so we would be left with a dataframe containing 12 rows corresponding to the 12 months of the year and the temperature values would have the mean values of individial months.
+
+```{r}
+temperature <- temperature %>% mutate(date = as.Date(Date, format = "%m/%d/%Y") %>% format("%Y-%m")) %>%
+  group_by(date) %>% summarise(across(everything(), mean, na.rm = TRUE)) # grouing by date and then summarising all the values to get means of all the columns
+```
+After doing the mutation, we will once again check the data frame for null values and we find that the original 'Date' column now contains null values so we will drop that alongwith the 'WindkmhDir' column which was not a numeric column so a mean for that could not be found. Both these columns would be dropped in the next part of the code alongwith the 'station_ID' column since it is not useful for our visualuzation purpose.
+
+```{r}
+na_temperature <- colSums(is.na(temperature))
+print(na_temperature)
+```
+```{r}
+temperature <- temperature[, -which(names(temperature) == 'WindkmhDir' | names(temperature) == 'Date' | names(temperature) == 'station_ID')] # dropping the non numeric columns
+```
+
+The final shape of the temperature dataframe is checked to make sure the mutation and mean has been comupted the way we expected and we see that indeed it has worked correctly and we have a data frame of the shape (12,14).
+
+```{r}
+shape_temperature <- dim(temperature)
+print(paste('The shape of Temperature Dataset is:', shape_temperature[1], 'rows and', shape_temperature[2], 'columns'))
+```
+We can now use the 'descr' function on the temperature data frame to perform basic statistical analysis on the separate columns and display them in the form of a 2-way table. The basic statistics presented to us include the Mean, Std Dev, Min, Max, Quantiles, IQR and Skewness values of all individual columns along with other basic stats.
+
+```{r}
+summary_table <- descr(temperature) # getting a 2-way summary table
+print(summary_table)
+```
+Now that the initial statistical analysis portion on both the data frames is complete, it is time to perform the merge on them. We will name this data frame as 'crime_temp' and the merging variable will be the date column. We will now be using this dataframe to perform further data processing and visualizations.
+
+```{r}
+  crime_temp <- merge(crime, temperature, by = "date") # merging on the data column
+```
+
+## Data Visualizations
+
+Since we are dealing with a data frame that contains the counts of the criminal activities in Colchester, it makes sense that the first step in our data visualization would be to visualize the counts of the different crime activities in the city using a bar plot. This visualization is done using the 'ggplot' library where the 'category' variable is first changed to the class of factor to allow for descending order arrangement then 'geom_bar' is used to plot the graph.
+
+```{r}
+crime_counts <- crime %>% count(category) %>% arrange(n) # getting the count of rows in individual categories
+crime$category <- factor(crime$category, levels = crime_counts$category) # factoring the column to arrange desencdingly
+ggplot(crime, aes(y = category)) +
+  geom_bar(fill = '#007A87') +
+  labs(title = "Criminal Occurances in One Year", x = "Number of Incidents", y = "Category of Crime") +
+  theme(plot.title = element_text(hjust=0.5)) # shift plot title to the middle
+```
+
+The graph above gives the counts of the different types of crimes happening in the city. As we can see, 'violent crime' leads the chart with count of more than 2500 which makes up about 40% of the whole dataset. This is not that surprising since it is such a broad term that it can include various incidents such as brawls and fights.
+
+Once we know what crimes are happening in the city, it would be good to find out the frequency of these crimes with respect to the months in which they occur. For this purpose we decided to create a a scatter plot with the dates on the x axis and the counts of these activities along the y axis. To achieve this, a grouping of the data frame was needed on the 'date' column and then counting the number of rows in each group. 'ggplot' was again used to make the scatter plot. 
+
+```{r}
+crime_date_relation <- crime %>% group_by(date) %>% summarise(count = n()) # group by date to get crimes per month
+ggplot(crime_date_relation, aes(x = date, y = count)) + geom_point(color = '#CD202C', size = 4) +
+  labs(title = "Criminal Offences per Month", x = "Months", y = "Number of Incidents") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + # tilt the x axis by 45 degrees for visibility
+  theme(plot.title = element_text(hjust=0.5))
+
+```
+
+The above plot shows the number of criminal activities in the city with January leading the way with around 650 activities and February having the least amount of incidents around 460. No specific trend can be found in this plot because the data is so randomly distributed.
+
+After this, since we now have a fair idea of the type of criminal activities taking place in the city and when they are taking place, it would make sense to know where they are taking as well. For this purpose an interactive plot is made using the 'leaflet' package. The mean latitude and longitude values are extracted to centralize the leaflet and then circle markers are added on the plot indicating the exact coordinates of the crime with the color of the circle indicating the category of the crime as well.
+
+(Hovering over the circles and clicking would show the latitude, longitude, category of crime and the street location of the crime)
+
+```{r}
+mean_long <- mean(crime$long) # central longitude calculation
+mean_lat <- mean(crime$lat) # central latitude calculation
+crime_categories <- unique(crime$category) 
+
+map_crime <- leaflet() %>% addTiles() %>% setView(lng = mean_long, lat = mean_lat, zoom = 14) %>%
+  addCircleMarkers(data = crime, lng = ~long, lat = ~lat, 
+                   color = ~essex_color, radius = 3, fillOpacity = 0.5,
+                   popup = ~paste('Lat: ', lat, '<br>Long: ', long, '<br>Category: ', category, '<br>Location: ', street_name)) 
+leaflet::addLegend(map = map_crime,position = "topleft", colors = essex_color, labels = crime_categories, opacity = 1)
+
+```
+
+After plotting the locations of all the crimes happening we came to the realization that this is too much data to properly analyze and interpret. So we decided to reduce the problem to the top 10 most effected areas instead of looking at the dataset as a whole. For this purpose, a dataframe 'top_locations' was created which has the top 10 most frequent locations from the data frame and slicing was done on the original 'crime_temp' data frame to achieve this.
+
+After the slicing was done, we filtered the data frame as per the street names we got in the 'top_locations' data frame to create a smaller data frame named 'crime_top_locations'. This gave us the crime in the top 10 locations of Colchester. A bar plot showing the count of criminal activities in these 10 locations is given below.
+
+```{r}
+crime_freq <- crime_temp %>% count(street_name) %>% arrange(desc(n))
+top_locations <- crime_freq %>% slice(2:11)  # slice 2-11 since first one had 'on or near' hence dropped that
+crime_top_locations <- crime %>% filter(street_name %in% top_locations$street_name) # filter the df using top 10 street names
+crime_top_locations$street_name <- factor(crime_top_locations$street_name, levels = rev(top_locations$street_name)) # reverse the order to get descending
+
+ggplot(crime_top_locations, aes(y = street_name)) +
+  geom_bar(fill = '#622567') +
+  labs(title = "Top 10 Unsafe Areas of Colchester", x = "Criminal Offences", y = "Location Name") + 
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The graph above shows the top 10 most effected locations in the city with shopping areas and super markets leading the trend which is to be expected as these places are usually the most crowded and are more prone to criminal activities like thefts, anti social behaviors and shoplifting.
+
+We then decided to plot this reduced map showing only the criminal activity points of these top 10 locations using the same leaflet package and the same interactive features. We now get a much less clustered plot showing the crimes happening in these places.
+
+```{r}
+mean_long_10 <- mean(crime_top_locations$long) # central longitude
+mean_lat_10 <- mean(crime_top_locations$lat) # central latitude
+crime_categories_10 <- unique(crime_top_locations$category)
+
+map_crime_temp <- leaflet() %>% addTiles() %>% setView(lng = mean_long_10, lat = mean_lat_10, zoom = 14) %>%
+  addCircleMarkers(data = crime_top_locations, lng = ~long, lat = ~lat, 
+                   color = ~essex_color, radius = 3, fillOpacity = 0.5,
+                   popup = ~paste('Lat: ', lat, '<br>Long: ', long, '<br>Category: ', category, '<br>Location: ', street_name)) 
+leaflet::addLegend(map = map_crime_temp,position = "topleft", colors = essex_color, labels = crime_categories, opacity = 1)
+
+```
+
+The above map shows the location of crimes happening if they are part of the top 10 most effected areas. To view the interactive elements of the plot, simply click on the circle markers to reveal the longitude, latitude, category of crime and the location.
+
+Now that the plot showing the location has been made, and we have a rough estimate of the counts of the different categories of crimes in the top 10 most effected areas. It seems wise to create a further breakdown of the different criminal activities in these areas. For that purpose a stacked barplot was created to show individual crime counts in the top 10 locations most effected. This plot was created using the 'geom_bar' function of the ggplot package and is also interactive.
+
+```{r}
+crime_top_locations <- crime %>% filter(street_name %in% top_locations$street_name) # get the top 10 locations
+crime_top_locations$street_name <- factor(crime_top_locations$street_name, levels = top_locations$street_name) # making factors to allow for descending order
+plot <- ggplot(crime_top_locations, aes(x = street_name, fill = category)) +
+  geom_bar(position = "stack") + scale_fill_manual(values = essex_color) +
+  labs(title = "Criminal Offence Breakdown per Location", x = "Location Name", y = "Offence Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(plot.title = element_text(hjust=0.5))
+plot <- ggplotly(plot, tooltip = c("category", "y"))
+plot
+```
+
+The above plot shows the distribution of different crime activities in the top 10 locations of the city distinguishable by different colors from the essex_color palette. Hovering over the different colored bars would reveal the category of the crime and the count of these incidents in that particular location.
+
+Based on the results of the plots we have gotten thus far, it would be a good way to visualize the different crime categories in a density plot to show the probability density function of all the crime categories. we use the 'geom_density' function to plot this.
+
+```{r}
+ggplot(crime_top_locations, aes(x = category, fill = category)) +
+  geom_density(alpha = 0.2) + # reduce opacity for better visibility
+  scale_fill_manual(values = essex_color) + 
+  labs(title = "Density Plot of Crime Categories", x = "Crime Category", y = "Density Value") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(plot.title = element_text(hjust=0.5))
+```
+
+The above plot shows the density measure of all the crime types, if we observe almost all the graphs have no skew which means that the mean and median of the curves is relatively the same, pointing to a lack of outliers and the data being distributed evenly.
+
+Now that we have visualized the important features of the crime data frame, it would also be essential to visualize the basic temperature statistics for the top 10 locations. We will first need to extract the columns that deal with the temperature statistics, for that we extract columns 14-26 from the data frame and then use the 'scale' function to scale the values down from -1 to 1. This part was essential because without doing the appropriate scaling, the violin plots were varied in their readings because columns like 'presurevHp' had readings in excess of 1000 while others were below a hundred. Scaling them down to the same scale ensured the violin looked evenly spread. A further plot depicting the same data as boxplots can also be seen to further easily interpret the mean, standard deviation and the outliers.
+
+```{r}
+crime_temp_top_10 <- merge(crime_top_locations, temperature, by = "date")
+temperature_columns <- crime_temp_top_10[, -c(1:13)] # drop all non-temperature columns
+temperature_columns <- temperature_columns[, -c(12)] # 12 column is wind direction so non-numeric
+```
+
+```{r}
+temperature_columns <- scale(temperature_columns) # scale the dataset for better plots
+temperature_columns <- data.frame(temperature_columns) # convert to df
+ggplot(melt(temperature_columns), aes(x = variable, y = value, fill = variable)) + # melt to tidy format for plotting
+  geom_violin() +
+  scale_fill_manual(values = essex_color) +
+  labs(title = "Violin Plots of Temperature Related Variables", x = "Variable Names", y = "Value Range") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(plot.title = element_text(hjust=0.5))
+```
+
+
+```{r}
+temperature_columns <- scale(temperature_columns) # scale the dataset for better plots
+temperature_columns <- data.frame(temperature_columns) # convert to df
+ggplot(melt(temperature_columns), aes(x = variable, y = value, fill = variable)) +  # melt to tidy format for plotting
+  geom_boxplot() +
+  scale_fill_manual(values = essex_color) +
+  labs(title = "Box Plots of Temperature Related Variables", x = "Variable Names", y = "Value Range") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(plot.title = element_text(hjust=0.5))
+```
+
+The scaled box plots of all the variables related to temperature statistics are given above. As can be seen, the IQR values are distributed between 1 and -1 with almost all of the plots having all the values in between the 3*IQR bracket showing no outliers. The only few outliers are in the Windknhint, presslevHp and totClOct showing that the data is mostly evenly distributed among all the variables.
+
+Now we would want to create a time series plot on the average temperature throughout the year as it would give a clearer picture of the weather in the top 10 locations throughout the year. We expect the values to hit a peak high in the months of Summer and the lowest in the months of Winter.
+
+```{r}
+crime_temp_top_10$date <- as.Date(paste0(crime_temp_top_10$date, "-01")) # add random date to make yyyy-mm-dd format
+ggplot(crime_temp_top_10, aes(x = date, y = TemperatureCAvg)) +
+  geom_line(color = '#35C4B5', size = 0.8) +
+  geom_point(size = 3, color = '#007A87') +
+  labs(title = "Average Temperature over One Year", x = "Months", y = "Temperature Reading") + 
+  scale_x_date(date_labels = "%B %Y", date_breaks = "1 month") + # 1 month break to show all months
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) + theme(plot.title = element_text(hjust=0.5))
+```
+
+The above graph shows the temperature values on the city over the period of the year 2023, as expected the values are lowest in the months that correlate to the winter months while they are the highest in the months of summer. These are just the mean values however it would also be interesting to plot them against the individual values of all the days as given to us in the original dataset. This overlay was possible after creating a new dataframe which had both the temperature columns from the original temperature data frame and from the mean temperature values.
+
+
+```{r}
+temperature_original <- read.csv('temp2023.csv')
+temperature_original$Date <- as.Date(temperature_original$Date, format = '%m/%d/%Y')
+combined_data <- rbind(
+  data.frame(Date = temperature_original$Date, TemperatureCAvg = temperature_original$TemperatureCAvg, Dataset = 'Original'),
+  data.frame(Date = crime_temp_top_10$date, TemperatureCAvg = crime_temp_top_10$TemperatureCAvg, Dataset = 'Average')
+)
+
+line_plot_temp <- ggplot(combined_data, aes(x = Date, y = TemperatureCAvg, color = Dataset)) +
+  geom_line(size = 0.6) +  
+  geom_point(data = subset(combined_data, Dataset == 'Average'), size = 3, color = "#007A87") +  
+  labs(title = 'Average vs Exact Temperature Values', x = 'Months', y = 'Temperature Reading') +
+  scale_color_manual(values = c('Original' = '#BED600', 'Average' = '#35C4B5')) + theme(plot.title = element_text(hjust=0.5))
+
+print(line_plot_temp)
+
+
+```
+
+The above plot shows a comparison of 2 time series plots using a line plot. The graph in lime green shows the actual values taken on daily basis in Colchester while the graph in teal color represents the average of the temperature over the individual months. As can be seen the two plots overlay nicely with very few values straying away from the pattern showing a relatively predictable weather reading.
+
+After getting the plots for the average temperature it would be interesting to find any underlying correlations between the other temperature based factors such as cloud cover, wind speed and humidity. For that we would create a correlation matrix among all the temperature based variables in the crime_temp_top_10 dataframe. So we would drop all the columns from 1-13 as they are not related to temperature and also column 12 from the resultant corr_matrix dataframe as it is indeed a temperature based reading of Wind Direction, however, since it is a non numeric value it can't be a part of the correlation matrix nad must be dropped. After dropping it we are left with the final c_m dataframe to make a correlation matrix on.   
+```{r}
+corr_matrix <- crime_temp_top_10[,-c(1:13)] # drop all non-temperature columns
+corr_matrix <- corr_matrix[,-c(12)] # 12 column is wind direction so non-numeric
+c_m <- cor(corr_matrix)
+ggcorrplot(c_m, hc.order = TRUE, type = "lower", lab = TRUE,lab_size = 2.5, colors = c('#007A87', 'white', '#D55C19'))
+```
+
+The correlation matrix above shows the strong positive correlations in green, the strong negative relations in red and the whites represent where there is no correlation among the variables. One thing to observe is that the temperature variables are highly correlated with each other while the Cloud cover variables are strongly correlated with each other as was expected.
+
+After looking at the correlation matrix generated above we find interesting features to visualize, first we would like to plot the correlation between total cloud cover in Octets (TotClOct) and the Wind Gusts (WindkmhGust), we see that it shows a strong positive relation so we expect that to show in the graph. We would also trace a best fit line based on the linear regression model to solidify this claim in the plot below.
+
+```{r}
+ggplot(crime_temp_top_10, aes(x = TotClOct, y = WindkmhGust)) +
+  geom_point(color = '#CD202C', size = 3) + 
+  geom_smooth(method = "lm", se = FALSE, color = "#132749") +
+  labs(title = "Wind Gust vs Total Cloud Cover Relation", x = "Total Cloud Cover (Octets)", y = "Wind Gusts (Km/h)") + 
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The plot above shows a strong positive relation between the total cloud cover and the wind in gusts and the best fit line based on the linear regression model proves this relation as it can very accurately predict the values with very little error (distance of points from the line).
+
+It would be interesting to also visualize the Average Temperature column against the Humidity Average column as they have shown a strong negative relation in the correlation matrix. This would be further checked by applying a linear regression model and the best fit line on that.
+
+```{r}
+ggplot(crime_temp_top_10, aes(x = TemperatureCAvg, y = HrAvg)) +
+  geom_point(color = '#CD202C', size = 3) + 
+  geom_smooth(method = "lm", se = FALSE, color = "#132749") +
+  labs(title = "Average Temperature vs Average Humidity", x = "Average Temperature (C)", y = "Average Humidity (%)") +   theme(plot.title = element_text(hjust=0.5))
+```
+
+The graph above shows a strong negative correlation as can be seen using the best fit line. The point values show slight fluctuation from the linear regression line showing a negative relation between the two variables.
+
+Now that we have extracted the interesting features of the temperature data frame it is time to do a correlation between the temperature and the number of criminal activities. For that we would first like to create a separate time series plot for the number of crimes happening in the top 10 location dataframe. This is donw by mutating a column called 'num_values' which shows the number of crimes happening in that month, and then plotting them using 'geom_line' function.
+
+```{r}
+crime_temp_top_10 <- crime_temp_top_10 %>% group_by(date) %>% mutate(num_values = n()) # get numver of crimes/month
+ggplot(crime_temp_top_10, aes(x = date, y = num_values)) +
+  geom_line(color = '#E98300', size = 0.8) +
+  geom_point(size = 3, color = '#CD202C') +
+  labs(title = "Criminal Activities per Month", x = "Months", y = "No of Incidents") + 
+  scale_x_date(date_labels = "%B %Y", date_breaks = "1 month") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(hjust=0.5))
+```
+
+The plot above shows that the criminal activities tend to lower at the start of the year as the graph shows values below 80 for the first three months and then a sharp rise can be seen as the temperature changes (possibly) and we get to the warmer parts of the year. Then it almost soothes out at around 180 acts per month for the last quarter of the year.
+
+Now it would be interesting to see the same phenomenon on a pie chart which would accurately distribute the number of crimes based on the season and based on the quarter of the year they fall under. They have been displayed in the following 2 pie charts.
+
+```{r}
+plot_season <- ggplot(crime_temp_top_10, aes(x = "", fill = season)) +
+    geom_bar(alpha = 0.7) +
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = c("#58A618", "#D55C19", "#F3D311", "#007A87")) +
+    labs(title = "Distribution of Crimes by Season") +
+    theme(plot.title = element_text(hjust = 0.5))
+
+
+plot_quarter <-  ggplot(crime_temp_top_10, aes(x = "", fill = quarter)) +
+    geom_bar(width = 0.1, alpha = 0.7) +
+    coord_polar(theta = "y") +
+    scale_fill_manual(values = c("#58A618", "#D55C19", "#F3D311", "#007A87")) +
+    labs(title = "Distribution of Crimes by Quarter") + 
+    theme(plot.title = element_text(hjust = 0.5))
+
+grid.arrange(plot_season, plot_quarter, ncol = 2, widths = c(2, 2))
+
+```
+
+The plots above depict the distribution of crime across the seasons and also across the quarter of the year they fall into. As can be seen the crimes seem to pick up during the winter seasons but that can be due to the fact that winter months are more than any other season's months. On the second plot we see that the first quarter of the year remains relatively crime free as compared to the other three which are almost equal. Hence, no particular trend can be extracted from these plots.
+
+Now that we have both the Average Temperature Graph and the Criminal Activities per Month Graphs separately, we would like to plot them on top of each other to see a possible relation among them. This is done using the 'geom_line' and 'geom_point' functions and finally smoothness is added to both the graphs using the 'loess' function and the significance interval is also displayed to show fluctuations from that. The graphs are then made interactive using the 'plotly' function.
+
+```{r}
+line_plots <- ggplot(crime_temp_top_10, aes(x = date)) +
+  geom_line(aes(y = num_values), color = '#E98300', size = 0.8) +
+  geom_point(aes(y = num_values), size = 3, color = '#CD202C') +
+  geom_smooth(aes(y = num_values), method = "loess", color = '#657786', size = 0, se = TRUE) + #loess for smoothing
+  geom_line(aes(y = TemperatureCAvg), color = '#35C4B5', size = 0.8) +
+  geom_point(aes(y = TemperatureCAvg), size = 3, color = '#007A87') +
+  geom_smooth(aes(y = TemperatureCAvg), method = "loess", color = '#657786', size = 0, se = TRUE) + # loess for smoothing
+  labs(title = "Criminal Incidents vs Average Temperature", x = "Months", y = 'Values') + 
+  scale_x_date(date_labels = "%B %Y", date_breaks = "1 month") + # Show Full Months and Year for better visibility
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  theme(plot.title = element_text(hjust=0.5))
+
+interactive_line_plots <- ggplotly(line_plots)
+interactive_line_plots
+
+```
+
+The plot above shows the average temperature in green per month and the number of criminal activities in those months in orange. As can be seen, there is almost no correlation between the two; with the crimes rising as the temperature rises in the warmer months but that can't be taken as a causality for that. The graphs are interactive and hovering over the red or green points reveal their actual values of the average temperature and the number of acts. The grey shaded region shows the loess function with it's significance interval for both the graphs and hovering in that region shows the expected value at that point in time. Since the graph shows significant fluctuations at the beginning, the loess line is far away from the actual values but as the graph begins to smooth out at the end we see that the predicted value and the actual values are very close to each other resulting in less error.
+ 
+At the end of the project, we would like to find the actual outcomes of all the cases that are reported in the top 10 areas with the highest criminal activities. We will use a pie chart to display the 'outcome_status' column to know the outcomes of all the cases.
+
+```{r}
+pie_chart <- plot_ly(crime_temp_top_10, labels = ~outcome_status, type = "pie",
+                     marker = list(colors = essex_color)) %>%
+  layout(title = "Outcome Of Criminal Cases")
+pie_chart
+```
+
+
+The outcome shows quite a concerning picture that more than 46% of the cases result in the suspect not being identified (shown in lime green) while there is almost a 21% chance of the suspect not being prosecuted. This means that if any person is to commit a felony, there is almost 67% chance that he would be able to get away with it and those odds are really high in my opinion which can give incentive to criminals to keep doing what they do without the fear of repercussions. This is one area that needs to be worked at for better safety of the general public.
+
+
+## Conclusion
+
+In conclusion we were given two datasets pertaining to information about the criminal acts in the city of Colchester and the temperature values of the same city over the year 2023. We were tasked to gain interesting insights into the data frames and present our findings in the form of a story that is both interesting and also highlights the important features of the data to derive insights from.
+
+We first read the dataframes and excluded all the null values and the null-valued-columns from both our dataframes and then merged both the data frames on the 'date' column. We also created a custom color palette for the project that we would use through out as it looks aesthetically pleasing to the eye. Once all the pre requisites were done we started to work on the visualization aspect of the project using bar charts to show the criminal activities in the area and mapping them on a real time map using leaflet package.
+
+We then realized that the dataset contained too many locations to derive useful insights from so we instead opted to use the top 10 most effected places to work on. These rows were added to a separate data frame and that data frame was then plotted on the map to get a reduced version of the original data frame. Then visualizations were done on the reduced data frame using stacked bar plots to distinguish between the different criminal activities in these areas and box plots were used to visualize the temperature related variables in the data frame. We then used line plots to plot the average temperature throughout the year (as a time series plot) and used the same technique to plot the number of activities as a time series plot. We then combined both of them together to derive a meaningful relation between temperature and criminal activities. This was followed by finding correlations between the temperature values and then plotting them using linear regression models.
+
+In the end we used pie charts to plot the outcome of all the convictions and reached the conclusion that there is some work that needs to be done to bring criminals to justice as almost 60% of the cases result in the accused either not getting caught or not being prosecuted. This shows that this area of law and order needs some serious looking into by the stakeholders involved to ensure public safety and peace of mind.
+
+## References
+
+1.    Find street level crime within a specified distance or area — ukp_crime [Internet]. ukpolice.njtierney.com. [cited 2024 Apr 23]. Available from: https://ukpolice.njtierney.com/reference/ukp_crime.html
+
+2.    Scrapping meteorological (Synop) data from the Ogimet webpage — meteo_ogimet [Internet]. bczernecki.github.io. [cited 2024 Apr 23]. Available from: https://bczernecki.github.io/climate/reference/meteo_ogimet.html
+
+3.    Our colour palette | University of Essex [Internet]. www.essex.ac.uk. [cited 2024 Apr 23]. Available from: https://www.essex.ac.uk/staff/brand/colour-palette
+
